@@ -1,0 +1,223 @@
+---
+title: "Animal rescues in London"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(leaflet)
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+animal_rescues <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-29/animal_rescues.csv')
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+skimr::skim(animal_rescues)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Set the date type, latitude and longitude.
+newdata = animal_rescues %>% 
+  dplyr::transmute(
+    hourly_notional_cost,
+    year = as.factor(cal_year),
+    date_time_of_call = lubridate::dmy_hm(date_time_of_call),
+    animal_type = animal_group_parent %>% as.factor(),
+    ward = ward %>% as.factor(),
+    latitude = as.numeric(latitude), 
+    longitude = as.numeric(longitude)) %>% 
+  dplyr::filter(complete.cases(latitude), complete.cases(longitude), latitude > 0, longitude > 0)
+
+```
+
+Overview
+======================================================================
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Data
+
+```{r}
+skimr::skim(animal_rescues)
+```
+
+### Most reported animal cases
+
+<!--Which animals were reported most?-->
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+# Get the total reported by animal type.
+animals_reported <- newdata %>%
+  filter(!is.na(animal_type)) %>%
+  count(animal_type, sort = TRUE) 
+
+top_animals_reported <- animals_reported %>%
+  slice_head(n = 6) %>%
+  arrange(n) %>%
+  mutate(animal_type = factor(animal_type, levels = animal_type)) 
+  
+plot_ly(data = top_animals_reported,
+        x = ~n,
+        y = ~animal_type,
+        color = ~animal_type,
+        orientation = "h",
+        type = "bar") %>%
+  layout(title = "Reported animal cases",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Number of cases"))
+
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Most common regions 
+
+<!--What regions are most common?-->
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+
+# Get the total reported cases by region.
+regions_reported <- newdata %>%
+  filter(!is.na(ward)) %>%
+  count(ward, sort = TRUE) 
+
+# Get the top 8 records.
+top_regions_reported <- regions_reported %>%
+  slice_head(n = 8) %>%
+  arrange(n) %>%
+  mutate(ward = factor(ward, levels = ward)) 
+
+# Flipped bar plot for the top reported cases by region.
+plot_ly(data = top_regions_reported,
+        x = ~n,
+        y = ~ward,
+        color = ~ward,
+        orientation = "h",
+        type = "bar") %>%
+  layout(title = "Reported cases by region",
+         yaxis = list(title = ""),
+         xaxis = list(title = "Number of cases"))
+
+```
+
+### Reported cases and region
+
+```{r, echo=FALSE}
+
+# Get the records of the top reported cases by region. 
+ward_map_data <- newdata %>% 
+  filter(ward %in% top_regions_reported$ward) %>%
+  select(latitude, longitude, ward, animal_type) %>%
+  mutate( mytext=paste(
+    "City: ", ward, "\n", 
+    "Animal: ", animal_type, sep=""))
+
+```
+
+
+```{r, echo=FALSE}
+# Create the text.
+mytext <- paste(
+   "Animal: ", ward_map_data$animal_type, "<br/>", 
+   "Ward: ", ward_map_data$ward, sep="")  %>%
+  lapply(htmltools::HTML)
+                
+
+# Final Map
+m <- leaflet(ward_map_data) %>% 
+  addTiles()  %>% 
+  setView( lat=51.1, lng=0 , zoom=8) %>%
+  addProviderTiles("Esri.WorldImagery") %>%
+  addCircleMarkers(~longitude, ~latitude, radius =1,
+                   label = mytext,
+                   labelOptions = labelOptions( style = list("font-weight" = "normal",
+                                                             padding = "3px 8px"),
+                                                             textsize = "13px", 
+                                                             direction = "auto"))
+   
+m 
+```
+
+Analysis of cost
+==========================================================================
+
+### Notional cost by animal type
+
+```{r, echo = FALSE}
+# Notional cost by animal type.
+p2 <- newdata %>%
+  filter(!is.na(animal_type), !is.na(hourly_notional_cost),
+         animal_type %in% c("Fox", "Deer", "Horse", "Bird", "Dog", "Cat")) %>%
+  ggplot() +
+  geom_boxplot(aes(x = animal_type, hourly_notional_cost, color = animal_type)) +
+  geom_jitter(aes(x = animal_type, hourly_notional_cost, color = animal_type)) +
+  labs(x = "Animal Type", y = "Hourly notional cost") 
+ 
+ggplotly(p2)
+```
+
+
+Reported cases by year
+==========================================================================
+
+```{r, echo = FALSE}
+p3 <- newdata %>%
+  group_by(animal_type) %>%
+  filter(animal_type %in% top_animals_reported$animal_type) %>%
+  ggplot() +
+  geom_bar(aes(x = year, fill = animal_type)) +
+  facet_wrap(~animal_type)
+
+ggplotly(p3)
+
+```
+
+
+
+About
+==========================================================================
+
+This analysis is about the reported cases of animals that were trapped and rescued by the London Fire Brigade.
+
+The data is taken from the TidyTuesday 2021 week 27 dataset. 
+
+You can access the original data from [here.](https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-06-29/readme.md) 
+
+Variables :
+
+* Animal Type
+* Region
+* Year
+* Longitude
+* Latitude
+* Hourly notional cost
+
+Author: 
+
+H. Lakna Perera
+
+University of Jayewardenapura
+
+
+
+
+
+
+
+
+
